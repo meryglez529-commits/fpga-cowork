@@ -53,10 +53,10 @@
 | 阶段 | 验证内容 | 通过标准 |
 |---|---|---|
 | RTL elaboration | | |
-| Simulation | | |
-| Synthesis | | |
-| Implementation/bitstream | | |
-| ILA/board | | |
+| S — 项目仿真 | | |
+| B — 构建与 bitstream | | |
+| H — 硬件与 ILA/VIO | | |
+| D — 只读诊断 | | |
 
 ## 8. 风险和约束
 

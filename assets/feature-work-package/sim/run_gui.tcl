@@ -1,27 +1,21 @@
 #==============================================================================
-# Mode 3 GUI simulation template
+# Mode 3 GUI evidence viewer
 #
-# Copy into AI-work/features/<feature>/<UNIT>/sim/run_gui.tcl and customize.
-# Intended for Vivado Tcl Console. Use project-level SIMULATION.md for known
-# environment quirks before running.
+# This is deliberately not a simulation launcher. Run the project-level batch
+# runner first, then point the WDB path at the project-local result recorded in
+# SIMULATION_RESULT.txt. This avoids a second GUI run mutating the project sim
+# set or concealing a batch-only issue.
 #==============================================================================
 
-set project_xpr "<PROJECT_XPR>"
-set tb_file "<TB_FILE>"
-set tb_top "<TB_TOP>"
-set sim_set "sim_1"
+set wdb_file  "<PROJECT_ROOT>/<project>.sim/<sim-set>/behav/xsim/<snapshot>.wdb"
+set wcfg_file "[file rootname $wdb_file].wcfg"
 
-if {[llength [get_projects -quiet]] == 0} {
-    open_project $project_xpr
+foreach evidence [list $wdb_file $wcfg_file] {
+    if {![file exists $evidence]} {
+        error "saved simulation evidence not found: $evidence"
+    }
 }
 
-set fs [get_filesets $sim_set]
-if {[file exists $tb_file]} {
-    add_files -fileset $fs $tb_file
-}
-set_property top $tb_top $fs
-set_property top_lib xil_defaultlib $fs
-update_compile_order -fileset $sim_set
-
-launch_simulation -mode behavioral
-run all
+open_wave_database $wdb_file
+open_wave_config $wcfg_file
+puts "INFO: opened project-local same-basename WDB/WCFG; this helper did not launch simulation."

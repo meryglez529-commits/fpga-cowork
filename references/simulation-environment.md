@@ -1,56 +1,82 @@
-# Simulation Environment SOP
+# Project Simulation SOP
 
-Use this reference in Mode 1 to record how **this project on this machine** can be simulated. Mode 3 units cite this canonical SOP and contribute verified discoveries back to it.
+Use this reference for Flow S in an existing Vivado project. S is standalone
+for a simulation-only request and may be selected by Mode 3 or Mode 4; it does
+not create or update a project-wide simulation baseline.
 
-## 1. Canonical entry point
+## 1. Ownership and locations
 
-The normal entry is `AI-work/env/SIMULATION.md`. An established long-form SOP may remain at `AI-work/guide/VIVADO_SIM_SOP.md`, but `env/SIMULATION.md` or `env/ENVIRONMENT.md` must explicitly point to it. Validators accept either location only when that pointer is real; this removes the old contradiction between documentation and validation.
-
-## 2. Required evidence
-
-Record facts, not just instructions:
-
-| Item | Record |
+| Item | Required location |
 |---|---|
-| Toolchain | Vivado executable/path/version and chosen simulator |
-| Known-good path | Exact command/Tcl sequence, working directory, input files, output/log paths, version and result |
-| Known-bad path | Exact command, error/symptom, evidence link and whether it is project-specific |
-| Dependencies | IP simulation model generation, libraries, `.prj`, environment variables, licenses and source order |
-| Constraint | Encryption, GUI/Webtalk, batch pipe, process lock, long path, GUI-only behavior or unavailable hardware |
-| Recovery | Non-destructive workaround and how to restore a user-authorized environment change |
-| Smoke evidence | Testbench or known-good run, assertions/checkpoint and the generated report |
+| Testbench and stable fixtures | `<project>.srcs/<sim-set>/new/` (normally `sim_1/new`) |
+| Selected testbench and source membership | Existing project sim set (normally `sim_1`) |
+| WDB, matching WCFG, XSim logs, generated Tcl, `xsim.dir` | `<project>.sim/<sim-set>/behav/xsim/` |
+| Command, result, scope, and interpretation | Standalone `AI-work/sim/<test-id>/`, or the calling unit's `out/sim/<test-id>/` |
 
-For the current Vivado 2021.1 workstation, an observed project-specific path may be “Vivado batch → Tcl `exec xvlog/xelab` → Vivado built-in `xsim`”; direct `xsim`, batch `launch_simulation`, encrypted `init.tcl`, or GUI/Webtalk symptoms must be reported with their actual logs. This is an example of how to record evidence, not a universal rule. Do not rename, patch, or otherwise mutate Vivado installation files without explicit user authorization and a restoration path.
+The project simulation set is normal persistent verification state. A requested testbench remains an official simulation source and becomes the selected top; do not create parallel sim sets and do not automatically restore the previous top or remove the testbench.
 
-## 3. Mode 1 simulation smoke
+## 2. Preflight only the actual simulation output
 
-Mode 1 must establish a minimal simulator capability, not prove every future testbench:
+Before launch, inspect this exact directory:
 
-1. confirm project opening and compile order, or record the blocker;
-2. run/replay one small known-good testbench or smoke command in the isolated baseline directory;
-3. record `SIM_READY`, `SIM_BLOCKED`, or `NOT_RUN` with command and log;
-4. distinguish an executable command path from actual functional coverage.
-
-If no simulation route works, write `SIM_BLOCKED` and the needed external condition. A blocked simulation path never allows Mode 3 to claim simulation closure.
-
-## 4. Output containment
-
-- Mode 1: all logs, journals, `xsim.dir`, WDB/VCD/CSV and reports live under `AI-work/reports/baseline/<baseline-id>/sim/`.
-- Mode 3: all equivalent outputs live under `AI-work/features/<feature>/<UNIT>/out/sim/`.
-- Pass Vivado explicit `-log`, `-journal`, `-tempDir`/work (when supported), and export paths. Scan for spill after the run.
-- Never deliberately leave new `vivado*.log`, `.jou`, `xvlog.pb`, `.wdb`, `xsim.dir`, CSV, or `hw_ila_data_*` in a project root, drive root, or system temp location.
-
-## 5. Relationship to Mode 3
-
-Mode 3 documents feature-specific stimuli, assertions and results in its unit’s `sim/SIM_REPLAY.md`; it links the project SOP rather than copying tool quirks. A reusable, verified discovery is then added back to the canonical SOP and `LOG.md`.
-
-## 6. Validation
-
-Run:
-
-```powershell
-python <skill>/scripts/validate-simulation-sop.py <project-root>/AI-work
-python <skill>/scripts/validate-foundation.py <project-root>/AI-work
+```text
+<project>.sim/<sim-set>/behav/xsim/
 ```
 
-These checks validate structure and evidence references; read the actual Vivado/simulator logs before declaring a simulation pass.
+Use:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File <skill>/scripts/check-sim-occupancy.ps1 \
+  -Project <project>.xpr -SimSet sim_1
+```
+
+The check tests exclusive access to active XSim result/log files. An open Vivado GUI is not itself a blocker. Only a locked file in that directory or a launch-time output access error is `SIM_OUTPUT_LOCKED`; report it and stop without killing processes, removing logs, or moving output.
+
+## 3. Run one scoped simulation
+
+Declare before running:
+
+| Input | Requirement |
+|---|---|
+| DUT/scenario | The behavior to observe or verify. |
+| Testbench/top | Under the official `sim_1/new` tree and selected as the `sim_1` top. |
+| Runtime | A finite XSim runtime; never default unattended work to `run all`. |
+| Fixture map | Only when file stimulus is used: source, format, and staged destination. |
+| Check | Optional testbench assertion or Tcl oracle. Omit it for waveform-only inspection. |
+
+Run the supplied project-level runner through Vivado:
+
+```powershell
+& <vivado.bat> -mode batch -source <skill>/scripts/templates/run_sim.tcl `
+  -log <AI-work>/sim/<test-id>/vivado.log `
+  -journal <AI-work>/sim/<test-id>/vivado.jou `
+  -tclargs <project>.xpr <tb-file> <tb-top> <runtime> <AI-work>/sim/<test-id> `
+           [oracle.tcl|-] [fixture-stage.tcl|-] [sim_1]
+```
+
+The runner adds the testbench to the existing sim set when required, retains
+the selected top and runtime settings that Vivado persists in the project, sets
+the XSim runtime before `launch_simulation`, and saves a WCFG with the fresh
+WDB basename. It does not copy WDB/WCFG/XSim logs to `AI-work`.
+
+## 4. Results and stop conditions
+
+| Result | Meaning |
+|---|---|
+| `SIM_PASS` / `SIM_FAIL` | A declared testbench self-check or Tcl oracle passed/failed. |
+| `SIM_COMPLETED` | Simulation produced the project-local WDB/WCFG, but no functional oracle was declared. |
+| `SIM_OUTPUT_LOCKED` | The precise project XSim output is occupied. Stop. |
+| `SIM_SETUP_BLOCKED`, `SIM_FIXTURE_BLOCKED`, `SIM_TOOL_FAIL` | Setup, fixture, compile/elaboration, launch, or artifact failure. Preserve the small analysis result and stop. |
+
+After a normal run, write a short report under the declared S result directory
+with the testbench/top, declared runtime, observed conclusion, and absolute
+paths to the WDB/WCFG/logs. Do not update `AI-work/env/`, project guides, Mode
+1 status, build baselines, or unrelated historical reports.
+
+Use only the scoped validator when validation is needed:
+
+```powershell
+python <skill>/scripts/validate-project-sim-run.py <AI-work>/sim/<test-id>
+```
+
+Do not run `validate-ai-work.py`, `validate-foundation.py`, or `validate-simulation-sop.py` for a single project simulation.

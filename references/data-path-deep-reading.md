@@ -508,20 +508,20 @@ Mode 1 读已有数据通路，产出可复用阅读理解。Mode 3 修改或新
 
 如果细读后发现需要改 RTL、加寄存器、补 testbench、跑综合或做 ILA：
 
-1. 在本阅读手册最后写“建议进入 Mode 3”。
-2. 列出建议新建的 feature/unit、需求待确认项、风险和建议验证点。
+1. 功能/设计行为变更时，在本阅读手册最后写“建议进入 Mode 3”；只需 testbench、构建或 ILA 时，建议进入 S、B 或 H。
+2. 列出建议新建的 feature/unit（如需要）、需求待确认项、风险和建议验证点。
 3. 不要在 Mode 2 文档里继续写需求计划、实施进度或仿真 PASS 证据。
 4. 已验证的新事实最终写入 `*_AS_BUILT.md`；阅读手册 `*_DEEP_READ.md` 不承担开发过程记录。
 
 建议桥接格式：
 
 ```markdown
-## 建议进入 Mode 3
+## 建议后续 Mode / Flow
 
 | 项 | 建议 |
 |---|---|
-| Feature slug | `<feature-slug>` |
-| Unit | `<DLx_UNIT_NNN>` |
+| Follow-on | `Mode 3` / `S` / `B` / `H` / `D` |
+| Feature slug / Unit | `<feature-slug>` / `<DLx_UNIT_NNN>`（仅 Mode 3） |
 | 需求待确认 | |
 | 主要风险 | |
 | 建议仿真/ILA 信号组 | |

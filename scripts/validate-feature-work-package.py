@@ -44,7 +44,7 @@ IMPLEMENTATION_PATTERNS = [
 REPLAY_PATTERNS = [
     ("testbench/top", re.compile(r"testbench|仿真 top|tb_", re.IGNORECASE)),
     ("GUI command", re.compile(r"source .*run_gui|Vivado GUI|Tcl Console", re.IGNORECASE)),
-    ("batch/manual command", re.compile(r"run_manual|run_batch|PowerShell|batch", re.IGNORECASE)),
+    ("project-runner command", re.compile(r"run_sim\.tcl|launch_simulation|PowerShell|batch", re.IGNORECASE)),
     ("pass/fail criteria", re.compile(r"通过标准|PASS|FAIL", re.IGNORECASE)),
 ]
 

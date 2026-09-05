@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scan for runtime artifacts spilled outside AI-work.
+"""Scan for runtime artifacts spilled outside authorized generated-output paths.
 
 This helps Mode 3 and Mode 4 avoid leaving Vivado/xsim/ILA outputs in D: root or the
 project root. It reports findings only; it never moves or deletes files.
@@ -25,12 +25,22 @@ DEFAULT_PATTERNS = [
     "xsim.dir",
     "hw_ila_data_*",
     "*.wdb",
+    "*.wcfg",
     "*.vcd",
 ]
 
 
 def is_inside_ai_work(path: Path) -> bool:
     return "AI-work" in path.parts
+
+
+def is_project_xsim_output(path: Path) -> bool:
+    """Allow only Vivado's standard <project>.sim/<set>/behav/xsim tree."""
+    parts = [part.lower() for part in path.parts]
+    for index, part in enumerate(parts):
+        if part.endswith(".sim") and parts[index + 2:index + 4] == ["behav", "xsim"]:
+            return True
+    return False
 
 
 def parse_since(value: str) -> float:
@@ -49,7 +59,7 @@ def scan(root: Path, patterns: list[str], max_depth: int, min_mtime: float | Non
             continue
         if len(rel.parts) > max_depth:
             continue
-        if is_inside_ai_work(p):
+        if is_inside_ai_work(p) or is_project_xsim_output(p):
             continue
         if min_mtime is not None and p.stat().st_mtime <= min_mtime:
             continue

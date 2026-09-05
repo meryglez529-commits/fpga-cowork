@@ -14,22 +14,19 @@
 |---|---|---|
 | RTL 修改 | 未开始 | |
 | RTL elaboration | 未运行 | |
-| 仿真 | 未运行 | |
-| 综合 | 未运行 | |
-| 实现/bitstream | 未运行 | |
-| ILA/上板 | 未运行 | |
+| S — 项目仿真 | 未选择 | |
+| B — 构建与 bitstream | 未选择 | |
+| H — 硬件与 ILA/VIO | 未选择 | |
+| D — 只读诊断 | 未选择 | |
 
 ## 2. 实施顺序
 
 - [ ] 1. 需求确认
-- [ ] 2. 架构方案确认
+- [ ] 2. 架构方案与 S/B/H/D 选择确认
 - [ ] 3. RTL 修改
 - [ ] 4. RTL elaboration
-- [ ] 5. 集成仿真 / 回归
-- [ ] 6. 综合
-- [ ] 7. 实现 / bitstream
-- [ ] 8. ILA / 上板辅助验证
-- [ ] 9. As-built 回写
+- [ ] 5. 已选择的 S/B/H/D 流程
+- [ ] 6. As-built 回写
 
 ## 3. RTL 改动状态
 
@@ -37,36 +34,24 @@
 |---|---|---|---|
 | `<path>` | todo | | |
 
-## 4. 仿真记录
+## 4. 已选择流程记录
 
-| 时间 | 用例/脚本 | 结果 | 证据 |
+| 时间 | 流程/场景 | 结果 | 证据 |
 |---|---|---|---|
 | | | | |
 
-## 5. 综合 / 实现 / bitstream 记录
-
-| 时间 | 阶段 | 结果 | 证据 | 备注 |
-|---|---|---|---|---|
-| | | | | |
-
-## 6. ILA / 上板记录
-
-| 时间 | 场景 | 结果 | 证据 |
-|---|---|---|---|
-| | | | |
-
-## 7. 工具运行与归档记录
+## 5. 工具运行与归档记录
 
 | 项 | 路径/命令 | 状态 |
 |---|---|---|
 | unit root | `AI-work/features/<feature-slug>/<UNIT>` | |
 | artifact marker | `AI-work/features/<feature-slug>/<UNIT>/out/.artifact_start` | |
 | Vivado log/journal 策略 | `<所有 -log/-journal 指向当前 unit out/*>` | |
-| ILA 脚本目录 | `AI-work/features/<feature-slug>/<UNIT>/ila` | |
-| ILA 输出目录 | `AI-work/features/<feature-slug>/<UNIT>/out/ila` / `out/hw_debug` | |
+| 流程包目录 | `sim` / `build` / `hardware` / `diagnostics`（仅已选择流程） | |
+| 流程输出目录 | `out/sim` / `out/build` / `out/ila` / `out/diagnostics`（仅已选择流程） | |
 | spill scan | `python <skill>/scripts/scan-artifact-spill.py <project-root> --since-file <UNIT>/out/.artifact_start --allowed-root <UNIT>` | |
 
-## 8. 问题跟踪
+## 6. 问题跟踪
 
 ### 已解决
 
@@ -80,7 +65,7 @@
 |---|---|---|
 | | | |
 
-## 9. 变更记录
+## 7. 变更记录
 
 | 日期 | 文件/阶段 | 变更内容 | 负责人 |
 |---|---|---|---|

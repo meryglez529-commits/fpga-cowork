@@ -1,140 +1,289 @@
 #==============================================================================
-# run_sim.tcl — Closed-loop xsim run-once template
+# run_sim.tcl -- persistent project-simulation runner
 #
-# Purpose:
-#   Compile + elaborate + run + collect a deterministic pass/fail signal.
-#   Designed for AI-driven closed-loop iteration: exit code 0 = PASS,
-#   nonzero = FAIL, log lines machine-parseable.
+# Invoke with Vivado batch mode:
+#   vivado -mode batch -source run_sim.tcl -log <AI-run>/vivado.log \
+#     -journal <AI-run>/vivado.jou -tclargs \
+#     <project.xpr> <tb-file> <tb-top> <runtime> <AI-run> \
+#     [oracle.tcl|-] [fixture-stage.tcl|-] [sim-set]
 #
-# Usage (PowerShell, from project root):
-#   & "C:/Xilinx/Vivado/2021.1/bin/vivado.bat" -mode batch `
-#       -log    AI-work/sim_out/run_sim.log `
-#       -journal AI-work/sim_out/run_sim.jou `
-#       -source AI-work/scripts/run_sim.tcl `
-#       -tclargs <project.xpr> [<sim_set>] [<runtime>] [<out_dir>]
-#
-# Mode 5 feature runs should pass a unit-local out_dir, for example:
-#   AI-work/features/<feature>/<UNIT>/out/sim
-#
-# Customize before first use:
-#   - `default_sim_set`  : usually `sim_1`
-#   - `default_runtime`  : adjust per testbench
-#   - `pass_token` / `fail_token`: testbench must $display these
-#   - `csv_path`         : where signals are dumped (testbench writes it)
-#   - `wdb_path`         : if you need to keep the waveform DB
+# Testbenches are official simulation sources under
+# <project>.srcs/<sim-set>/new. The runner keeps the selected top and source
+# membership in the project; it never creates a temporary sim set or restores
+# an earlier top. WDB/WCFG/XSim logs remain only in the project XSim directory.
 #==============================================================================
 
-# --- knobs ------------------------------------------------------------------
-set default_sim_set  "sim_1"
-set default_runtime  "1ms"
-set default_out_dir  "AI-work/sim_out"
-set pass_token       "PASS"
-set fail_token       "FAIL"
-set log_keep_lines   500       ;# 仅保留尾部 N 行做 pass/fail 判定
-# ----------------------------------------------------------------------------
+proc sim_emit {level message} {
+    puts "$level: $message"
+}
 
-proc info_line {m} { puts "INFO  : $m" }
-proc fail_line {m} { puts "FAIL  : $m" }
+proc sim_stop {tag message code} {
+    global sim_exit_code sim_terminal_tag
+    if {$sim_exit_code == 0} {
+        set sim_exit_code $code
+        set sim_terminal_tag $tag
+        sim_emit "ERROR" "$tag: $message"
+    }
+}
 
-# --- 1. 参数 ----------------------------------------------------------------
-if {[llength $argv] < 1} {
-    fail_line "missing argument: <project.xpr>"
+proc sim_output_is_locked {message} {
+    return [regexp -nocase {(cannot[[:space:]]+(access|remove|delete|rename)|permission[[:space:]]+denied|file.*locked|used[[:space:]]+by[[:space:]]+another[[:space:]]+process)} $message]
+}
+
+proc path_is_within {child parent} {
+    set child [file normalize $child]
+    set parent [file normalize $parent]
+    return [expr {$child eq $parent || [string match "${parent}/*" $child]}]
+}
+
+proc simset_contains_file {fileset canonical_path} {
+    foreach f [get_files -quiet -of_objects $fileset] {
+        if {![catch {set candidate [file normalize [get_property NAME $f]]}] &&
+            $candidate eq $canonical_path} {
+            return 1
+        }
+    }
+    return 0
+}
+
+proc newest_matching_file {pattern minimum_mtime} {
+    set newest ""
+    set newest_time -1
+    foreach f [glob -nocomplain $pattern] {
+        if {[file mtime $f] >= $minimum_mtime && [file mtime $f] > $newest_time} {
+            set newest $f
+            set newest_time [file mtime $f]
+        }
+    }
+    return $newest
+}
+
+proc write_analysis_summary {result_dir result project sim_set tb_top tb_file runtime xsim_dir wdb wcfg} {
+    file mkdir $result_dir
+    set summary_path [file join $result_dir SIMULATION_RESULT.txt]
+    set summary [open $summary_path w]
+    foreach {key value} [list \
+        result $result \
+        project $project \
+        sim_set $sim_set \
+        top $tb_top \
+        testbench $tb_file \
+        runtime $runtime \
+        xsim_dir $xsim_dir \
+        project_wdb $wdb \
+        project_wcfg $wcfg \
+        compile_log [file join $xsim_dir compile.log] \
+        elaborate_log [file join $xsim_dir elaborate.log] \
+        simulate_log [file join $xsim_dir simulate.log] \
+        result_policy project-owned-current-output] {
+        puts $summary "$key=$value"
+    }
+    close $summary
+}
+
+if {[llength $argv] < 5 || [llength $argv] > 8} {
+    sim_emit "ERROR" "SIM_SETUP_BLOCKED: usage: <project.xpr> <tb-file> <tb-top> <runtime> <AI-run> ?oracle.tcl|-? ?fixture-stage.tcl|-? ?sim-set?"
     exit 2
 }
-set xpr     [lindex $argv 0]
-set sim_set [expr {[llength $argv] >= 2 ? [lindex $argv 1] : $default_sim_set}]
-set runtime [expr {[llength $argv] >= 3 ? [lindex $argv 2] : $default_runtime}]
-set out_dir [expr {[llength $argv] >= 4 ? [lindex $argv 3] : $default_out_dir}]
-set csv_path "$out_dir/sim_result.csv"
-set wdb_path "$out_dir/sim.wdb"
-set log_file "$out_dir/run_sim.log"
 
-if {![file exists $xpr]} {
-    fail_line "xpr not found: $xpr"
-    exit 2
+set xpr [file normalize [lindex $argv 0]]
+set tb_file [file normalize [lindex $argv 1]]
+set tb_top [lindex $argv 2]
+set runtime [lindex $argv 3]
+set out_dir [file normalize [lindex $argv 4]]
+set oracle_file ""
+set fixture_file ""
+set sim_set "sim_1"
+if {[llength $argv] >= 6 && [lindex $argv 5] ni {"" "-"}} {
+    set oracle_file [file normalize [lindex $argv 5]]
 }
-info_line "xpr=$xpr sim_set=$sim_set runtime=$runtime out_dir=$out_dir"
-
-# --- 2. 准备输出目录 --------------------------------------------------------
-file mkdir $out_dir
-file mkdir AI-work/sim
-
-# --- 3. 打开工程 ------------------------------------------------------------
-open_project $xpr
-current_sim_set [get_filesets $sim_set]
-update_compile_order -fileset $sim_set
-
-set tb_top [get_property top [get_filesets $sim_set]]
-info_line "tb top: $tb_top"
-
-# --- 4. 设置仿真时长（让 testbench 自己 $finish 也行，这里给一个上限） ------
-set_property -name {xsim.simulate.runtime} -value $runtime -objects [get_filesets $sim_set]
-set_property -name {xsim.simulate.log_all_signals} -value true -objects [get_filesets $sim_set]
-
-# --- 5. 启动仿真 ------------------------------------------------------------
-info_line "launching xsim ..."
-if {[catch {launch_simulation -mode behavioral} err]} {
-    fail_line "launch_simulation failed: $err"
-    close_project
-    exit 3
+if {[llength $argv] >= 7 && [lindex $argv 6] ni {"" "-"}} {
+    set fixture_file [file normalize [lindex $argv 6]]
+}
+if {[llength $argv] >= 8} {
+    set sim_set [lindex $argv 7]
 }
 
-run $runtime
+set sim_exit_code 0
+set sim_terminal_tag ""
+set project_open 0
+set sim_open 0
+set simulation_started 0
+set fileset ""
+set xsim_dir ""
+set launch_started 0
+set project_wdb ""
+set project_wcfg ""
+set pending_wcfg ""
 
-# --- 6. 收集波形数据库路径（xsim 默认在 sim 目录） --------------------------
-set actual_wdb ""
-foreach f [glob -nocomplain "*.sim/$sim_set/behav/xsim/*.wdb"] {
-    set actual_wdb $f
-    break
+foreach {label path} [list project $xpr testbench $tb_file] {
+    if {![file exists $path]} {
+        sim_stop "SIM_SETUP_BLOCKED" "$label not found: $path" 2
+    }
 }
-if {$actual_wdb ne ""} {
-    file copy -force $actual_wdb $wdb_path
-    info_line "wdb copied to $wdb_path"
+if {$tb_top eq "" || $runtime eq ""} {
+    sim_stop "SIM_SETUP_BLOCKED" "testbench top and finite runtime are required" 2
 }
-
-close_sim
-close_project
-
-# --- 7. 解析 testbench 的 PASS/FAIL --------------------------------------
-# Vivado 把 $display 的输出写到 .log（启动时的 -log 参数）。
-# 我们让调用方传日志路径，这里默认从 AI-work/sim_out/run_sim.log 读。
-if {![file exists $log_file]} {
-    fail_line "run_sim log not found: $log_file (forgot -log flag?)"
-    exit 4
+if {$oracle_file ne "" && ![file exists $oracle_file]} {
+    sim_stop "SIM_SETUP_BLOCKED" "oracle not found: $oracle_file" 2
 }
-
-set lines {}
-set fp [open $log_file r]
-while {[gets $fp line] >= 0} {
-    lappend lines $line
+if {$fixture_file ne "" && ![file exists $fixture_file]} {
+    sim_stop "SIM_FIXTURE_BLOCKED" "fixture adapter not found: $fixture_file" 2
 }
-close $fp
-
-set tail_start [expr {max(0, [llength $lines] - $log_keep_lines)}]
-set tail [lrange $lines $tail_start end]
-
-set saw_pass 0
-set saw_fail 0
-foreach l $tail {
-    if {[string first $fail_token $l] >= 0} { incr saw_fail; puts "  >> $l" }
-    if {[string first $pass_token $l] >= 0} { incr saw_pass; puts "  >> $l" }
+if {[file exists [file join $out_dir SIMULATION_RESULT.txt]]} {
+    sim_stop "SIM_SETUP_BLOCKED" "analysis directory already has SIMULATION_RESULT.txt: $out_dir" 2
 }
 
-if {$saw_fail > 0} {
-    fail_line "testbench reported FAIL ($saw_fail occurrence(s))"
-    exit 1
+if {$sim_exit_code == 0 && $oracle_file ne ""} {
+    if {[catch {source $oracle_file} error_text]} {
+        sim_stop "SIM_SETUP_BLOCKED" "cannot source oracle: $error_text" 2
+    } elseif {[llength [info procs sim_oracle]] != 1} {
+        sim_stop "SIM_SETUP_BLOCKED" "oracle must define: proc sim_oracle {} { return 1 or 0 }" 2
+    }
 }
-if {$saw_pass == 0} {
-    fail_line "testbench did not emit '$pass_token' — undecided result. 检查 testbench 是否有 \$display(\"PASS\")。"
-    exit 1
+if {$sim_exit_code == 0 && $fixture_file ne ""} {
+    if {[catch {source $fixture_file} error_text]} {
+        sim_stop "SIM_FIXTURE_BLOCKED" "cannot source fixture adapter: $error_text" 2
+    } elseif {[llength [info procs stage_sim_fixtures]] != 1} {
+        sim_stop "SIM_FIXTURE_BLOCKED" "fixture adapter must define: proc stage_sim_fixtures {sim_run_dir} { ... }" 2
+    }
 }
 
-# --- 8. 检查 csv 是否生成 ----------------------------------------------------
-if {[file exists $csv_path]} {
-    info_line "result csv: $csv_path"
-} else {
-    info_line "no csv emitted (testbench did not write $csv_path; this is OK if not expected)"
+if {$sim_exit_code == 0 && [catch {open_project $xpr} error_text]} {
+    sim_stop "SIM_SETUP_BLOCKED" "open_project failed: $error_text" 3
+} elseif {$sim_exit_code == 0} {
+    set project_open 1
 }
 
-info_line "SIMULATION PASS"
-exit 0
+set project_dir [file dirname $xpr]
+set project_name [file rootname [file tail $xpr]]
+set sim_source_dir [file join $project_dir "${project_name}.srcs" $sim_set new]
+set xsim_dir [file join $project_dir "${project_name}.sim" $sim_set behav xsim]
+
+if {$sim_exit_code == 0 && ![path_is_within $tb_file $sim_source_dir]} {
+    sim_stop "SIM_SETUP_BLOCKED" "testbench must be under $sim_source_dir, got $tb_file" 3
+}
+if {$sim_exit_code == 0} {
+    set fileset [get_filesets -quiet $sim_set]
+    if {[llength $fileset] != 1} {
+        sim_stop "SIM_SETUP_BLOCKED" "simulation set not found or ambiguous: $sim_set" 3
+    }
+}
+if {$sim_exit_code == 0 && ![simset_contains_file $fileset $tb_file]} {
+    if {[catch {add_files -fileset $sim_set $tb_file} error_text]} {
+        sim_stop "SIM_SETUP_BLOCKED" "cannot add testbench to $sim_set: $error_text" 3
+    }
+}
+if {$sim_exit_code == 0 && [catch {set_property top $tb_top $fileset} error_text]} {
+    sim_stop "SIM_SETUP_BLOCKED" "cannot select simulation top: $error_text" 3
+}
+if {$sim_exit_code == 0 && [catch {set_property xsim.simulate.runtime $runtime $fileset} error_text]} {
+    sim_stop "SIM_SETUP_BLOCKED" "cannot set finite XSim runtime $runtime: $error_text" 3
+}
+
+if {$sim_exit_code == 0 && $fixture_file ne ""} {
+    file mkdir $xsim_dir
+    if {[catch {stage_sim_fixtures $xsim_dir} error_text]} {
+        sim_stop "SIM_FIXTURE_BLOCKED" "$error_text" 4
+    }
+}
+
+if {$sim_exit_code == 0} {
+    sim_emit "INFO" "reuse project simulation output: $xsim_dir"
+    sim_emit "INFO" "launch project simulation: sim_set=$sim_set top=$tb_top runtime=$runtime"
+    set launch_started [clock seconds]
+    if {[catch {launch_simulation -simset $sim_set -mode behavioral} error_text]} {
+        if {[sim_output_is_locked $error_text]} {
+            sim_stop "SIM_OUTPUT_LOCKED" "$error_text" 4
+        } else {
+            sim_stop "SIM_TOOL_FAIL" "launch_simulation failed: $error_text" 4
+        }
+    } else {
+        set sim_open 1
+        set simulation_started 1
+    }
+}
+
+if {$sim_open} {
+    set pending_wcfg [file join $xsim_dir ".fpga-cowork-[pid]-[clock seconds].wcfg"]
+    if {[catch {save_wave_config $pending_wcfg} error_text]} {
+        if {$sim_exit_code == 0} {
+            sim_stop "SIM_TOOL_FAIL" "save_wave_config failed: $error_text" 5
+        }
+    }
+}
+
+if {$sim_exit_code == 0 && $oracle_file ne ""} {
+    if {[catch {set oracle_result [sim_oracle]} error_text]} {
+        sim_stop "SIM_FAIL" "oracle raised an error: $error_text" 5
+    } elseif {$oracle_result eq "1"} {
+        sim_emit "INFO" "oracle returned PASS"
+        set sim_terminal_tag "SIM_PASS"
+    } elseif {$oracle_result eq "0"} {
+        sim_stop "SIM_FAIL" "oracle returned FAIL" 5
+    } else {
+        sim_stop "SIM_FAIL" "oracle must return exactly 1 or 0, got: $oracle_result" 5
+    }
+} elseif {$sim_exit_code == 0 && $sim_open} {
+    set sim_terminal_tag "SIM_COMPLETED"
+}
+
+if {$sim_open} {
+    if {[catch {close_sim} error_text] && $sim_exit_code == 0} {
+        sim_stop "SIM_TOOL_FAIL" "close_sim failed: $error_text" 5
+    }
+    set sim_open 0
+}
+# Vivado 2021.1 has no valid no-argument save_project form.  The project
+# mutations above (add_files and set_property) are already persisted in the
+# open XPR by Vivado, so do not issue a redundant save command here.  This
+# keeps the runner usable on Vivado 2021.1 while retaining the already
+# persisted sim-set membership, selected top, and runtime settings.
+
+if {$launch_started > 0} {
+    set project_wdb [newest_matching_file [file join $xsim_dir *.wdb] $launch_started]
+    if {$project_wdb eq ""} {
+        if {$pending_wcfg ne "" && [file exists $pending_wcfg]} {
+            file delete -force $pending_wcfg
+        }
+        if {$sim_exit_code == 0} {
+            sim_stop "SIM_TOOL_FAIL" "no fresh WDB found in $xsim_dir" 6
+        }
+    } elseif {$pending_wcfg ne "" && [file exists $pending_wcfg]} {
+        set project_wcfg "[file rootname $project_wdb].wcfg"
+        if {[catch {file rename -force $pending_wcfg $project_wcfg} error_text]} {
+            if {$sim_exit_code == 0} {
+                sim_stop "SIM_TOOL_FAIL" "cannot save same-basename WCFG: $error_text" 6
+            }
+        } elseif {![file exists $project_wcfg]} {
+            if {$sim_exit_code == 0} {
+                sim_stop "SIM_TOOL_FAIL" "same-basename WCFG was not created: $project_wcfg" 6
+            }
+        }
+    }
+}
+
+if {$project_open} {
+    if {[catch {close_project} error_text] && $sim_exit_code == 0} {
+        sim_stop "SIM_TOOL_FAIL" "close_project failed: $error_text" 6
+    }
+    set project_open 0
+}
+
+set result $sim_terminal_tag
+if {$sim_exit_code == 0 && $result eq ""} {
+    set result "SIM_COMPLETED"
+}
+if {[catch {write_analysis_summary $out_dir $result $xpr $sim_set $tb_top $tb_file $runtime $xsim_dir $project_wdb $project_wcfg} error_text]} {
+    sim_emit "ERROR" "cannot write SIMULATION_RESULT.txt: $error_text"
+    if {$sim_exit_code == 0} {
+        set sim_exit_code 6
+        set result "SIM_TOOL_FAIL"
+    }
+}
+
+sim_emit "RESULT" "$result"
+if {$sim_exit_code == 0} {
+    exit 0
+}
+exit $sim_exit_code
