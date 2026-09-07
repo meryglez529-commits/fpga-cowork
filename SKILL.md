@@ -16,7 +16,7 @@ Use this skill to keep official FPGA sources, project-owned tool output, and AI 
 | **Mode 1 — 工程接手与架构阅读** | User explicitly asks to take over, map, organize, or establish shared understanding of an existing project. | `AI-work/` plus a project guide and data-path reading guides. | `references/ai-work-bootstrap.md`, `references/reading-workflow.md`, `references/data-path-deep-reading.md`, `references/foundation-setup.md`, `references/output-format.md` |
 | **Mode 2 — 单文件精读 / 注释** | User asks to explain, read closely, annotate, or compare a source file. | Evidence-backed explanation, or an authorized comment-only closure annotation. | `references/single-file-close-reading.md` |
 | **Mode 3 — 功能开发与变更验证** | User asks to add, change, or fix a design's RTL/XDC/IP behavior. | One resumable feature unit under `AI-work/features/`. | `references/feature-development.md` |
-| **Mode 4 — 新板卡开发与接口 Bring-up** | User has a new/planned board and needs an FPGA baseline from schematics or interface requirements. | A board bring-up unit, demos, and a Mode 3 handoff. | `references/new-board-development.md`, `references/ai-work-bootstrap.md` |
+| **Mode 4 — 新板卡工程初始化与硬件环境** | User has a new/planned board and needs a reusable FPGA hardware environment before the first feature request. | `AI-work/` base records and a complete schematic-to-FPGA pin map; no empty Vivado project. | `references/new-board-development.md` |
 
 | Operational flow | Use when | Standalone output | Read first |
 |---|---|---|---|
@@ -25,7 +25,7 @@ Use this skill to keep official FPGA sources, project-owned tool output, and AI 
 | **H — 硬件与 ILA/VIO** | Program or reuse a qualified image, capture one ILA/VIO scenario, or perform a bounded board observation. | `AI-work/hardware/<capture-id>/` | `references/hardware-debug-environment.md` |
 | **D — 只读诊断** | Explain existing logs, reports, source/IP resolution, or prior evidence without executing a new stage. | `AI-work/diagnostics/<diagnostic-id>/` | `references/read-only-diagnostics.md` |
 
-A simulation-only request uses S directly. A source/behavior change uses Mode 3 and then only the needed S/B/H/D flows. A build-only or capture-only request uses B or H directly; it does not require Mode 3. An explicit request for a new board uses Mode 4 and its needed flows. Do not enter Mode 1 merely because a request contains “仿真” or “诊断”.
+A simulation-only request uses S directly. A source/behavior change uses Mode 3 and then only the needed S/B/H/D flows. A build-only or capture-only request uses B or H directly; it does not require Mode 3. A new board begins with Mode 4 to establish its engineering records and hardware environment; it does not create an empty FPGA project. Later feature work uses one approved work package at a time. Do not enter Mode 1 merely because a request contains “仿真” or “诊断”.
 
 ## Shared custody and evidence rules
 
@@ -88,9 +88,11 @@ Create one unit under `AI-work/features/<feature>/<UNIT>/` before changing autho
 
 Use `references/feature-development.md`. Select S, B, H, and D only when the changed requirement or evidence gap needs them. A passive debug-image probe addition belongs to H plus B with explicit source/build authorization; it is not automatically a Mode 3 business-feature change.
 
-## Mode 4 — 新板卡开发与接口 Bring-up
+## Mode 4 — 新板卡工程初始化与硬件环境
 
-Use `references/new-board-development.md` for new-board work. Keep its product baseline, demos, and Mode 3 handoff separate from an existing-project Mode 1 reading workflow. Use S/B/H/D only when the corresponding board action is required; board operations require the user’s explicit authorization for that session.
+Use `references/new-board-development.md` to create only `AI-work/README.md`, `AI-work/LOG.md`, and `AI-work/HARDWARE_ENVIRONMENT.md`, then populate the reusable schematic-to-FPGA hardware map. Do not create `fpga/`, an empty Vivado project, placeholder RTL/XDC/IP, interface demos, a product baseline, or release artifacts in this mode.
+
+When the user later requests a feature, create one work package with `PLAN.md`, `EXECUTION.md`, and `ACCEPTANCE.md`. Extract its hardware facts from `HARDWARE_ENVIRONMENT.md`; if a fact is missing, trace it from the sources and update that shared record before using it. Present the plan and wait for the user's confirmation unless clear advance approval is already given. After implementation, report evidence and acceptance status; commit or push only after the user accepts the work package, unless they explicitly pre-authorize it. A real Vivado project is created through Tcl only in an approved work package. Programming, Flash/PHY writes, and active network traffic remain explicitly authorized operations for that plan.
 
 ## Reference routing
 

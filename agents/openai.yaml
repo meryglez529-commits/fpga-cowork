@@ -1,4 +1,4 @@
 interface:
   display_name: "FPGA Cowork"
-  short_description: "Bring up new FPGA boards and co-develop verified RTL systems."
-  default_prompt: "Use $fpga-cowork to bring up a new FPGA board from schematics through reusable interface demos and a Mode-3-ready product baseline, or to take over and develop an existing FPGA project with evidence-backed verification."
+  short_description: "Initialize FPGA environments and develop approved features."
+  default_prompt: "Use $fpga-cowork to map a new board's FPGA hardware environment, then prepare an approval-ready feature plan."
