@@ -1,68 +1,10 @@
-# Mode 2 — Single-File Close Reading and Annotation
+# Mode 2 — 单文件阅读或注释
 
-Use this mode when the user names one RTL/source file and asks to read, explain, annotate, comment, or compare it. First classify the request: explanation/read/compare is read-only; an explicit annotation request is a full active user-RTL closure annotation. The objective is teaching and traceability without functional behavior changes.
+Mode 2 用于用户点名一个或少量源文件，要求解释、比较或添加注释。
 
-## 1. Boundary
-
-### Read-only close reading
-
-For an explanation, deep-read, or comparison request, do not edit RTL and do not create an annotation manifest. Trace only the active hierarchy needed to support the conclusion, clearly separate it from commented-out historical instances, and say that the result is read-only.
-
-### Explicit annotation closure
-
-For a request containing `注释`, `添加注释`, `comment`, or `用 Mode 2 注释`, edit comments only in the selected source and its full transitive **active user-RTL** instantiation closure. It is incomplete to annotate only the selected root. Never change ports, parameters, logic, constraints, IP, project settings, or generated/third-party code. If close reading exposes a defect or a needed behavior change, record it and open a Mode 3 unit.
-
-## 2. Resolve the explicit annotation closure first
-
-Before editing, resolve the selected module’s directly instantiated **active user RTL** modules, then recursively resolve their instantiated active user RTL modules until reaching one of these boundaries:
-
-- a leaf source module with no user RTL child;
-- generated IP, vendor primitive, encrypted RTL, black box or third-party source;
-- a module whose source cannot be uniquely resolved.
-
-For each boundary, record the instance name, module/interface contract, source classification and reason it is not annotated. A child referenced from multiple instances is annotated once and its instance sites are listed. Do not include commented-out instances in the closure; list them only as historical context when useful. Do not merely follow files included by a compile list: this closure follows actual module instantiation.
-
-## 3. Preserve source format exactly
-
-For every edited file, detect before editing and write into the manifest:
-
-- encoding: UTF-8, UTF-8 with BOM, GBK, GB18030, or other confirmed format;
-- line ending: CRLF or LF;
-- original module names, ports and a pre-edit content/diff fingerprint.
-
-Write comments in the file’s established language and comment style. Preserve encoding, BOM and line endings when saving. When the source can make a byte-for-byte GB18030 decode/re-encode round trip, choose GB18030 for annotation—even if its historical content appears to contain more than one legacy encoding—and encode all new comments as GB18030. After editing, verify that the functional content is byte-identical apart from inserted/replaced comment ranges: ports, module/interface declarations, parameters, assignments, procedural logic and instantiation statements must be unchanged. Stop only if no single encoding permits a lossless round trip, or if the available writer cannot prove non-comment bytes are preserved.
-
-Use `check-source-format.py <source> --write-json AI-work/annotations/<file>.before-format.json` before editing and the same command with `--expected-json` afterwards. For a GB18030 source that cannot be opened by the ordinary patch editor, use `insert-rtl-comments.py AI-work/annotations/<scope>.comment-plan.json --apply`: it requires the pre-edit capture, proves the original bytes round-trip under the selected encoding, and writes only planned `//` insertions. The format helper never edits RTL and fails if encoding, BOM, or newline convention changes; record its commands and the functional diff review in the annotation manifest.
-
-## 4. Reading workflow
-
-1. Locate the source in the real data path: upstream/downstream, clock/reset, data/control boundary and external interfaces.
-2. State one plain-language purpose sentence: “this module does one thing: …”. Explain why before listing signals.
-3. Identify real-world data objects and units: pixel/sample/frame/packet, count/address/byte/word, valid versus padded data, lane/channel and trigger boundaries.
-4. Explain contracts at module interfaces, state machines, FIFO/CDC boundaries, packing/reordering logic, length arithmetic and non-obvious constants. Do not comment obvious syntax.
-5. Add short, concrete comments; for a Chinese user, use clear Chinese consistent with the source’s existing language. Do not add new mojibake or rewrite unrelated legacy text just for style.
-6. Validate source structure and the functional-only diff after editing.
-
-## 5. Required manifest
-
-Write `AI-work/annotations/<scope>_ANNOTATION_MANIFEST.md`:
-
-```markdown
-# <scope> annotation manifest
-
-| 项目 | 内容 |
-|---|---|
-| 根源文件 / 模块 | |
-| 数据通路位置 | |
-| 注释范围 | 根模块及递归例化的用户 RTL 闭包 |
-| 未编辑边界 | IP / primitive / generated / third-party / unresolved，含实例与接口说明 |
-| 源文件格式 | 每个文件的 encoding、BOM、line ending |
-| 实例关系 | 每个模块与所有实例位置 |
-| 功能差异检查 | 仅注释文本变更；module/ports/logic 未变 |
-| 验证命令与结果 | |
-| 后续 Mode 3 问题 | 无 / 链接到 unit |
-```
-
-## 6. Final handoff
-
-Tell the user what mental model the comments establish, which sources were annotated, what dependency boundary was intentionally not edited, which format checks passed, and that functional RTL was untouched. Link the manifest.
+- 解释或比较为只读操作。仅阅读回答问题所需的例化、接口、时钟或数据路径；需要留存
+  的结论写入 `AI-work/mode2/`。
+- 用户明确要求添加注释时，只改指定文件和范围内的注释，不改变端口、参数、逻辑、
+  约束、IP 或工程设置。完成后在 `AI-work/mode2/` 记录文件、范围和“仅注释变更”的
+  检查结果。
+- 若阅读发现需要行为或功能改变，说明该发现并进入 Mode 3。

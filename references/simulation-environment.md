@@ -1,82 +1,30 @@
-# Project Simulation SOP
+# S — 仿真
 
-Use this reference for Flow S in an existing Vivado project. S is standalone
-for a simulation-only request and may be selected by Mode 3 or Mode 4; it does
-not create or update a project-wide simulation baseline.
+S 用于获得明确 DUT 和场景的仿真证据。它始终使用用户指定 `.xpr` 的 simulation
+fileset 和工程上下文。
 
-## 1. Ownership and locations
+## 计划
 
-| Item | Required location |
-|---|---|
-| Testbench and stable fixtures | `<project>.srcs/<sim-set>/new/` (normally `sim_1/new`) |
-| Selected testbench and source membership | Existing project sim set (normally `sim_1`) |
-| WDB, matching WCFG, XSim logs, generated Tcl, `xsim.dir` | `<project>.sim/<sim-set>/behav/xsim/` |
-| Command, result, scope, and interpretation | Standalone `AI-work/sim/<test-id>/`, or the calling unit's `out/sim/<test-id>/` |
+在工作包计划中写明：
 
-The project simulation set is normal persistent verification state. A requested testbench remains an official simulation source and becomes the selected top; do not create parallel sim sets and do not automatically restore the previous top or remove the testbench.
+- `.xpr`、simulation fileset、DUT、testbench 和场景；
+- 检查方法与通过标准；
+- `$finish`、仿真 runtime 或其他明确终止条件；
+- 是否需要新增 testbench、登记文件或调整 simulation top。
 
-## 2. Preflight only the actual simulation output
+testbench 位于该工程已选 simulation fileset 的 GUI 标准源目录，通常为
+`<工程>.srcs/<fileset>/new/`。新增源文件、登记至 fileset 或调整 top 会改变工程状态，
+必须属于已确认计划。
 
-Before launch, inspect this exact directory:
+## 执行与记录
 
-```text
-<project>.sim/<sim-set>/behav/xsim/
-```
+通过既有 `.xpr` 启动仿真。WDB、WCFG、XSim 日志和其他原生产物留在 `<工程>.sim/`。
+在启动前只检查本次要使用的精确仿真输出是否被占用；单纯打开 Vivado GUI 不构成冲突。
+若目标输出确实被占用，停止并汇报。
 
-Use:
+AI 在工作包 `out/sim/` 中记录 testbench、场景、命令、结论和原生产物绝对路径。仿真
+通过仅覆盖实际执行的场景，不能替代构建或板级验证。
 
-```powershell
-powershell -ExecutionPolicy Bypass -File <skill>/scripts/check-sim-occupancy.ps1 \
-  -Project <project>.xpr -SimSet sim_1
-```
-
-The check tests exclusive access to active XSim result/log files. An open Vivado GUI is not itself a blocker. Only a locked file in that directory or a launch-time output access error is `SIM_OUTPUT_LOCKED`; report it and stop without killing processes, removing logs, or moving output.
-
-## 3. Run one scoped simulation
-
-Declare before running:
-
-| Input | Requirement |
-|---|---|
-| DUT/scenario | The behavior to observe or verify. |
-| Testbench/top | Under the official `sim_1/new` tree and selected as the `sim_1` top. |
-| Runtime | A finite XSim runtime; never default unattended work to `run all`. |
-| Fixture map | Only when file stimulus is used: source, format, and staged destination. |
-| Check | Optional testbench assertion or Tcl oracle. Omit it for waveform-only inspection. |
-
-Run the supplied project-level runner through Vivado:
-
-```powershell
-& <vivado.bat> -mode batch -source <skill>/scripts/templates/run_sim.tcl `
-  -log <AI-work>/sim/<test-id>/vivado.log `
-  -journal <AI-work>/sim/<test-id>/vivado.jou `
-  -tclargs <project>.xpr <tb-file> <tb-top> <runtime> <AI-work>/sim/<test-id> `
-           [oracle.tcl|-] [fixture-stage.tcl|-] [sim_1]
-```
-
-The runner adds the testbench to the existing sim set when required, retains
-the selected top and runtime settings that Vivado persists in the project, sets
-the XSim runtime before `launch_simulation`, and saves a WCFG with the fresh
-WDB basename. It does not copy WDB/WCFG/XSim logs to `AI-work`.
-
-## 4. Results and stop conditions
-
-| Result | Meaning |
-|---|---|
-| `SIM_PASS` / `SIM_FAIL` | A declared testbench self-check or Tcl oracle passed/failed. |
-| `SIM_COMPLETED` | Simulation produced the project-local WDB/WCFG, but no functional oracle was declared. |
-| `SIM_OUTPUT_LOCKED` | The precise project XSim output is occupied. Stop. |
-| `SIM_SETUP_BLOCKED`, `SIM_FIXTURE_BLOCKED`, `SIM_TOOL_FAIL` | Setup, fixture, compile/elaboration, launch, or artifact failure. Preserve the small analysis result and stop. |
-
-After a normal run, write a short report under the declared S result directory
-with the testbench/top, declared runtime, observed conclusion, and absolute
-paths to the WDB/WCFG/logs. Do not update `AI-work/env/`, project guides, Mode
-1 status, build baselines, or unrelated historical reports.
-
-Use only the scoped validator when validation is needed:
-
-```powershell
-python <skill>/scripts/validate-project-sim-run.py <AI-work>/sim/<test-id>
-```
-
-Do not run `validate-ai-work.py`, `validate-foundation.py`, or `validate-simulation-sop.py` for a single project simulation.
+用户明确要求的独立仿真操作，在 `AI-work/sim/<标识>/` 创建 `PLAN.md`、
+`EXECUTION.md` 和 `ACCEPTANCE.md`，记录同样的信息；若需要修改设计输入或工程设置，
+则进入 Mode 3。

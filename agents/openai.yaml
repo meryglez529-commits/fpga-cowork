@@ -1,4 +1,4 @@
 interface:
-  display_name: "FPGA Cowork"
-  short_description: "Initialize FPGA environments and develop approved features."
-  default_prompt: "Use $fpga-cowork to map a new board's FPGA hardware environment, then prepare an approval-ready feature plan."
+  display_name: "FPGA 协作开发"
+  short_description: "在既有 Vivado 工程中建立硬件环境并完成获批的 FPGA 工作包闭环。"
+  default_prompt: "使用 $fpga-cowork 为板卡建立硬件环境，或在我指定的既有 Vivado 工程中准备一个 FPGA 功能工作包。"

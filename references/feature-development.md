@@ -1,69 +1,43 @@
-# Feature Development and Change Verification (Mode 3)
-
-> Mode 3 changes a defined FPGA design behavior and records why the behavior, source boundary, and selected evidence are correct. It invokes S, B, H, and D only when the changed requirement or an evidence gap requires them.
-
-Use Mode 3 for authorized RTL, XDC, IP, block-design, or project behavior changes. Do not use it for a simulation-only request, an unchanged-image build, an existing-image ILA capture, or a read-only report investigation; use S, B, H, or D directly for those requests.
-
-## 1. Boundary and work package
-
-Create one unit under `AI-work/features/<feature-slug>/<UNIT>/` before editing authorized design files. Mode 3 may start without Mode 1. Reuse a Mode 1 guide when one exists; otherwise record only the project root, authorized source boundary, and uncertainty relevant to this change.
-
-| Item | Requirement |
-|---|---|
-| Requirement | Confirm behavior, interfaces, units, legal ranges, and out-of-scope behavior before RTL changes. |
-| Authority | Reuse `AI-work/env/RULES.md` when present; otherwise record the user-authorized design root and files in the unit. |
-| Scope | List every RTL/XDC/IP/BD/project file changed. Do not call a passive ILA probe addition a business-function change. |
-| Evidence plan | Select only needed S, B, H, and D flows, with an oracle and stop condition for each. |
-| Continuation | Read the smallest relevant status, evidence, and changed inputs; rerun only invalidated flows. |
-
-When entering from Mode 4, read its `MODE3_HANDOFF.md`, acceptance matrix, dependency matrix, and applicable reuse manifest before editing a shared path. Mark affected demo evidence `STALE`; never copy a demo-only source into product to avoid that dependency.
-
-### Default unit layout
+# Mode 3 — 需求工作包闭环
 
 ```text
-AI-work/features/<feature>/<UNIT>/
-  REQUIREMENTS.md
-  ARCHITECTURE.md
-  IMPLEMENTATION.md
-  RTL_REVIEW.md                 # broad or multi-file handoff only
-  sim/ build/ hardware/ diagnostics/    # only when the matching flow is used
-  out/sim/ out/build/ out/ila/ out/diagnostics/ out/regression/
-  evidence/ diagrams/
+需求 → AI 方案 → 用户确认 → 实现 → 验证 → 结果与验收 → 用户确认 → 提交/推送
 ```
 
-The flow folders are packets, not mandatory stages. Keep outer tool logs and result summaries under the matching `out/` directory; native project waveforms, run products, and captures remain in the project-owned locations defined by their flow.
+## 计划
 
-## 2. Requirements, architecture, and implementation
+创建：
 
-`REQUIREMENTS.md` states the physical/business problem, relevant signals and units, existing paths reused, exclusions, and confirmed versus open decisions. If an unknown changes RTL behavior, stop and ask rather than encode a guess.
+```text
+AI-work/work-packages/<需求名>-<日期>/
+  PLAN.md
+  EXECUTION.md
+  ACCEPTANCE.md
+```
 
-`ARCHITECTURE.md` describes data/trigger/control paths, insertion point, old-mode preservation, CDC/FIFO/memory implications, and selected evidence flows. A nontrivial change includes a CDC table plus an evidence table that maps each acceptance question to S, B, H, or D and states its limit. An exact latency needs both endpoints in one clocked observation or a verified common timestamp/cross-trigger; separate ILA captures prove correlation or ordering, not exact latency.
+`PLAN.md` 只说明当前需求：目标与边界、相关硬件事实及来源、用户指定的 `.xpr`、拟修改
+的工程输入、选用的 S/B/H/D、板级操作、验收标准。仿真、构建或硬件操作应标明将使用的
+fileset、run 或硬件目标，以及其原生产物位置。
 
-Record exact changed files, rationale, review risk, and selected-flow status in `IMPLEMENTATION.md`. Add `RTL_REVIEW.md` for a broad/multi-file handoff. Before editing a shared clock/reset, interface core, or board constraint, map the effect through an applicable Mode 4 dependency matrix.
+缺少硬件事实时，先追溯并更新 `HARDWARE_ENVIRONMENT.md`；未指定 `.xpr` 时停在计划
+阶段。用户确认计划后，才可实施其中的工程修改、构建或板级操作。
 
-## 3. Compose S, B, H, and D
+## 执行
 
-| Flow | Call from Mode 3 when | Record in the unit |
-|---|---|---|
-| S — 项目仿真 | Changed behavior needs a self-checking test, waveform, or regression. | Scope, oracle, result, and project-native WDB/WCFG paths. |
-| B — 构建与 bitstream | Changed input requires build evidence, or a debug image must be generated. | Requested runs, timing/resource outcome, and bit/LTX identity. |
-| H — 硬件与 ILA/VIO | Board observation is needed after a qualified image exists. | Capture declaration, target/core/image identity, observation, and conclusion limit. |
-| D — 只读诊断 | Existing evidence must be explained before selecting or changing a flow. | Diagnosis result, cited evidence, and bounded next action. |
+只在计划指定的 `.xpr` 上操作。RTL、XDC、testbench、IP、ILA、VIO 和必要 Tcl 均放在
+该工程正常 GUI 目录并注册在工程中；Vivado 原生产物留在该工程的 `.sim/`、`.runs/` 或
+`.hw/`。AI-work 仅记录命令、结果、解释及原生产物路径。
 
-Adding a passive ILA probe is an H+B debug-image change with explicit source and build authorization. If it also changes product behavior, it is both a Mode 3 change and an H+B activity. Never claim that a terminal-state capture retroactively proves an earlier startup sequence.
+RTL、XDC、IP、ILA、VIO、Block Design 或工程设置改动后，按交付目标重新构建；下载
+使用该工程构建的 `.bit`，ILA 或 VIO 使用同一次实现生成的匹配 `.bit` / `.ltx`。
 
-Do not run S merely because source changed, B merely because an ILA exists, or H merely because a bitstream was generated. Link each selected flow packet and result from `IMPLEMENTATION.md`.
+`EXECUTION.md` 记录实际改动、实际执行结果、偏差和停止原因。若需求或硬件事实与计划
+不符，停止相关操作，更新计划并重新确认。
 
-## 4. Artifact containment and completion
+## 验收与提交
 
-| Artifact | Destination |
-|---|---|
-| Outer S/B/H tool logs and result summaries | This unit's `out/<flow>/<id>/` |
-| Project XSim WDB/WCFG and XSim logs | `<project>.sim/<sim-set>/behav/xsim/` |
-| Project build products, reports, bit/LTX | Named project run locations |
-| Native Hardware Manager state and `.ila` | `<project>.hw/<hw-set>/` and `<project>.hw/backup/` |
-| D excerpts and conclusion | This unit's `out/diagnostics/<id>/` |
+`ACCEPTANCE.md` 对照计划记录交付内容、修改文件、S/B/H/D 证据、适用的时序/DRC/仿真
+或板级结论、未验证项和限制，并给出 `PASS`、`FAIL`、`BLOCKED` 或 `PARTIAL` 状态。
 
-Create an artifact marker before a tool flow and run `scripts/scan-artifact-spill.py` when available before closing a broad unit. Do not delete, relocate, or rewrite pre-existing user artifacts to satisfy a validator.
-
-Synchronize only affected records: changed acceptance in `REQUIREMENTS.md`, changed architecture/evidence plan in `ARCHITECTURE.md`, changed source/build/image/execution state in `IMPLEMENTATION.md`, and a meaningful unit transition in `AI-work/LOG.md`. Mode 3 is complete when the authorized behavior change, selected evidence, and known limits are reviewable. It is not necessary to run every flow.
+构建成功不等于功能或板级成功；仿真和 ILA 结论仅覆盖已执行的场景、信号和时段。等待
+用户验收确认后再提交或推送，除非已获明确预授权。

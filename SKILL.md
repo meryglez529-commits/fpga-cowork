@@ -1,109 +1,129 @@
 ---
 name: fpga-cowork
-description: Safely understand and change FPGA/RTL projects, or run scoped simulation, build, hardware, and read-only diagnostic flows for existing Vivado projects.
+description: 在既有 Vivado GUI 工程中建立可追溯硬件环境，并以计划、执行、验收闭环协作完成 FPGA 功能开发。
 metadata:
-  version: 1.0.0
+  version: 2.1.1
 ---
 
-# FPGA Co-work
+# FPGA 协作开发
 
-Use this skill to keep official FPGA sources, project-owned tool output, and AI analysis distinct. Select the smallest task mode and only the operational flows that answer the user's question. The four Modes express intent; S, B, H, and D are composable operational flows, not extra Modes.
+本技能把人机协作流程与 Vivado 操作区分开：Mode 定义协作关系；S、B、H、D
+是按当前需求选用的 Vivado 操作流程。
 
-## Classify requests before opening sources
+## 模式选择
 
-| Intent Mode | Use when | Outcome | Read first |
-|---|---|---|---|
-| **Mode 1 — 工程接手与架构阅读** | User explicitly asks to take over, map, organize, or establish shared understanding of an existing project. | `AI-work/` plus a project guide and data-path reading guides. | `references/ai-work-bootstrap.md`, `references/reading-workflow.md`, `references/data-path-deep-reading.md`, `references/foundation-setup.md`, `references/output-format.md` |
-| **Mode 2 — 单文件精读 / 注释** | User asks to explain, read closely, annotate, or compare a source file. | Evidence-backed explanation, or an authorized comment-only closure annotation. | `references/single-file-close-reading.md` |
-| **Mode 3 — 功能开发与变更验证** | User asks to add, change, or fix a design's RTL/XDC/IP behavior. | One resumable feature unit under `AI-work/features/`. | `references/feature-development.md` |
-| **Mode 4 — 新板卡工程初始化与硬件环境** | User has a new/planned board and needs a reusable FPGA hardware environment before the first feature request. | `AI-work/` base records and a complete schematic-to-FPGA pin map; no empty Vivado project. | `references/new-board-development.md` |
+| 模式 | 适用情况 | 记录位置 |
+|---|---|---|
+| **Mode 1 — 工程阅读** | 阅读、接手或梳理既有工程。 | `AI-work/mode1/`，仅在需要留存时记录。 |
+| **Mode 2 — 单文件阅读或注释** | 解释、比较或仅添加注释。 | `AI-work/mode2/`，仅在需要留存时记录。 |
+| **Mode 3 — 需求工作包闭环** | 新功能、设计修改或该功能的验证。 | `AI-work/work-packages/<需求名>-<日期>/`。 |
+| **Mode 4 — 板卡环境初始化** | 该板卡尚无可复用的 AI 硬件环境。 | `AI-work/` 的全局基础文件。 |
 
-| Operational flow | Use when | Standalone output | Read first |
-|---|---|---|---|
-| **S — 项目仿真** | Run a testbench, inspect a waveform, or verify a named DUT/scenario. | `AI-work/sim/<test-id>/` | `references/simulation-environment.md` |
-| **B — 构建与 bitstream** | Synthesize, implement, check timing, or generate a bitstream for a declared project/run. | `AI-work/build/<build-id>/` | `references/build-environment.md` |
-| **H — 硬件与 ILA/VIO** | Program or reuse a qualified image, capture one ILA/VIO scenario, or perform a bounded board observation. | `AI-work/hardware/<capture-id>/` | `references/hardware-debug-environment.md` |
-| **D — 只读诊断** | Explain existing logs, reports, source/IP resolution, or prior evidence without executing a new stage. | `AI-work/diagnostics/<diagnostic-id>/` | `references/read-only-diagnostics.md` |
+Mode 4 对一块协作环境尚未建立的板卡只执行一次；之后的新功能均使用 Mode 3。
+Mode 1、Mode 2 不构成 Mode 3 的前置条件。D 可用于独立的只读问题。用户明确要求的
+独立 S、B、H 操作也必须在 `AI-work/<flow>/<标识>/` 创建 `PLAN.md`、`EXECUTION.md`
+和 `ACCEPTANCE.md`；如果操作需要修改设计输入或工程设置，则进入 Mode 3，不适用该例外。
 
-A simulation-only request uses S directly. A source/behavior change uses Mode 3 and then only the needed S/B/H/D flows. A build-only or capture-only request uses B or H directly; it does not require Mode 3. A new board begins with Mode 4 to establish its engineering records and hardware environment; it does not create an empty FPGA project. Later feature work uses one approved work package at a time. Do not enter Mode 1 merely because a request contains “仿真” or “诊断”.
+## Mode 4 — 板卡与协作环境初始化
 
-## Shared custody and evidence rules
-
-- Official RTL, XDC, IP, block designs, project files, testbenches, and fixtures remain in the user-confirmed design root.
-- For an established Vivado set, testbenches and stable fixtures belong in `<project>.srcs/<sim-set>/new` (normally `sim_1/new`). WDB, same-basename WCFG, XSim logs, journals, and `xsim.dir` belong in `<project>.sim/<sim-set>/behav/xsim`.
-- For established Vivado Hardware Manager state, use `<project>.hw/<hw-set>/` (normally `hw_1`) for native ILA wave state and `<project>.hw/backup/` for exported `.ila` captures. Open the `.xpr` before Hardware Manager so Vivado binds to this project-owned hardware workspace.
-- `AI-work` contains only analysis, replay metadata, documentation, reports, and AI-owned feature or bring-up work. Never copy ordinary project-local XSim or Hardware Manager waveform/capture outputs into it.
-- Do not create a history directory or move old XSim output before a rerun. A rerun may overwrite the current project-owned output in place.
-- Before an action, define the decision question, minimum evidence, restoration needed, and stop condition. Do not expand a local task into a project audit.
-- Never modify unrelated historical reports or manifests merely to satisfy a validator.
-
-## Flow S — 项目仿真
-
-Use this flow for ordinary simulation of an existing Vivado project, either standalone or as a selected verification flow of Mode 3/4.
-
-1. Resolve the project, existing sim set, DUT, selected top, testbench, optional fixture map, finite runtime, and any requested check.
-2. Before launch, inspect only the exact `<project>.sim/<sim-set>/behav/xsim` output directory. Use `scripts/check-sim-occupancy.ps1` or an equivalent read-only lock check. A Vivado GUI process is **not** a blocker unless it actually holds a file in that directory. If the directory is occupied, report `SIM_OUTPUT_LOCKED` and stop; do not kill a process or move output.
-3. Reuse the existing sim set. Put a newly needed testbench in `<project>.srcs/<sim-set>/new`; add it to that sim set and make it the selected top. This is normal persistent project simulation state. Do not create a parallel sim set and do not apply an automatic `temporary`/restore workflow.
-4. Use `scripts/templates/run_sim.tcl` through Vivado’s project simulation manager. It sets the declared finite XSim runtime before `launch_simulation`, keeps the selected top/testbench membership, and saves a WCFG beside the fresh WDB with the same basename.
-5. Write only this run’s command, result, scope, decisive observations, and project-local artifact paths under its standalone `AI-work/sim/<test-id>/` directory or the calling unit's `out/sim/<test-id>/`. Then stop. Do not update unrelated Mode 1 or baseline records.
-6. A self-checking testbench or Tcl oracle produces `SIM_PASS`/`SIM_FAIL`. Without one, a completed run with WDB/WCFG is `SIM_COMPLETED`, not a functional pass. Run only `scripts/validate-project-sim-run.py <AI-work/sim/<test-id>>` when validation is useful; never run Mode 1 validators for a project simulation.
-
-Do not use bare `xsim`, hand-assembled `xvlog`/`xelab`, a substituted IP model, or GUI clicking as the acceptance path when an established `.xpr` sim set exists.
-
-## Mode 1 — 工程接手与架构阅读
-
-Mode 1 is an explicit, read-only collaboration-onboarding workflow. Its job is to make a project understandable to later engineers or sessions; it does **not** prove that Vivado, IP licenses, synthesis, implementation, bitstream generation, or hardware are usable. The user owns the prerequisite that the engineering project is usable before development begins.
-
-Mode 1 may read official sources and write only `AI-work/`. It must not run Vivado, create testbenches, change `.xpr`, `.vscode`, RTL, XDC, IP, generated outputs, build runs, or hardware state.
-
-Required outcomes:
+Mode 4 初始化下列供后续所有模式共用的文件和目录：
 
 ```text
 AI-work/
   README.md
   LOG.md
-  OPEN-QUESTIONS.md
-  .gitignore
-  env/RULES.md
-  guide/FPGA_PROJECT_GUIDE.md
-  guide/data-paths/<DL*>_DEEP_READ.md
+  HARDWARE_ENVIRONMENT.md
 ```
 
-Create only the additional directories needed by a later route. The project guide records the engineering boundary, entry project/top, modules, clocks/resets, interfaces, and evidence limits. Data-path guides describe the identified business paths or explicitly record why a path is out of scope. Use source paths and line numbers; do not turn inferred tool or board facts into architecture facts.
+Mode 1、Mode 2 和工作包目录在实际首次需要记录时创建。
 
-Mode 1 completes at `ARCHITECTURE_READY` when those reading artifacts are sufficient for the requested scope. It has no `READY` gate and never blocks Mode 3. Run `validate-ai-work.py` and `validate-foundation.py` only when this explicit Mode 1 work is being delivered; those validators check the Mode 1 reading artifacts, not a simulation/build baseline.
+`HARDWARE_ENVIRONMENT.md` 是共享硬件事实来源。它记录 FPGA/封装、Bank 供电、
+JTAG 与配置事实、资料来源、每张已审阅 FPGA 页的逐信号映射、已追踪功能路径和
+待确认项。每条映射标明视觉确认、文本提取或用户确认等证据状态。用于管脚、
+IOSTANDARD、时钟、时序、IP 参数或板级动作的事实必须能追溯到原理图、数据手册
+或用户确认；未知项不得猜测使用。
 
-## Mode 2 — 单文件精读 / 注释
+环境可以是 `PARTIAL`：未使用接口不阻塞已经具备全部所需事实的功能工作包；当前
+需求涉及的接口则必须具备所需的管脚、电压、极性、时钟和端到端连线证据。
 
-Classify before editing:
+Mode 4 不创建 Vivado 工程、`.xpr`、RTL、XDC、IP、Tcl、bitstream 或板级动作。
+用户通过 GUI 创建或指定正常 Vivado 工程；后续 Mode 3 计划引用该既有 `.xpr`。
 
-- **Read-only close reading** (`解释` / `精读` / `比较`) does not authorize source edits. Trace only the active hierarchy required for an evidence-backed explanation and state generated/IP/third-party boundaries.
-- **Explicit annotation** (`注释` / `添加注释` / `comment the module`) authorizes comment-only changes. Resolve the full transitive active user-RTL instantiation closure before the first edit, preserve encoding/newlines, change only comments, and write an annotation manifest.
+需要时阅读 [新板卡环境](references/new-board-development.md)。
 
-If close reading reveals a functional defect, record it and use Mode 3 for any change.
+## Mode 3 — 需求工作包闭环
 
-## Mode 3 — 功能开发与变更验证
+每项功能需求遵循：
 
-Create one unit under `AI-work/features/<feature>/<UNIT>/` before changing authorized RTL, XDC, IP, block-design, or project behavior. Mode 3 may start directly; it may reuse a Mode 1 guide when available, but must not wait for Mode 1 or a global engineering baseline. When project facts are unknown, record only the risk relevant to the feature and verify the affected scope.
+```text
+需求 → AI 方案 → 用户确认 → 实现 → 验证 → 结果与验收 → 用户确认 → 提交/推送
+```
 
-Use `references/feature-development.md`. Select S, B, H, and D only when the changed requirement or evidence gap needs them. A passive debug-image probe addition belongs to H plus B with explicit source/build authorization; it is not automatically a Mode 3 business-feature change.
+实现前，在工作包中创建 `PLAN.md`、`EXECUTION.md` 和 `ACCEPTANCE.md`。计划仅说明
+当前需求的目标与边界、相关硬件事实和来源、既有 `.xpr`、拟修改的工程输入、选用的
+S/B/H/D 流程、板级操作及验收标准。缺少硬件事实时，先追溯并更新
+`HARDWARE_ENVIRONMENT.md`；未指定 `.xpr` 时停在计划阶段，请用户创建或选择工程。
 
-## Mode 4 — 新板卡工程初始化与硬件环境
+用户确认计划后，才可修改 RTL、XDC、IP、Block Design、ILA、VIO 或工程设置，或
+执行下载、ILA、VIO、Flash 等板级状态改变操作。执行记录实际改动、命令、原生产物
+路径、偏差和停止原因；验收记录证据、结论、限制和未验证项。用户接受验收后才提交
+或推送，除非已明确预授权。
 
-Use `references/new-board-development.md` to create only `AI-work/README.md`, `AI-work/LOG.md`, and `AI-work/HARDWARE_ENVIRONMENT.md`, then populate the reusable schematic-to-FPGA hardware map. Do not create `fpga/`, an empty Vivado project, placeholder RTL/XDC/IP, interface demos, a product baseline, or release artifacts in this mode.
+需要时阅读 [需求工作包](references/feature-development.md)。
 
-When the user later requests a feature, create one work package with `PLAN.md`, `EXECUTION.md`, and `ACCEPTANCE.md`. Extract its hardware facts from `HARDWARE_ENVIRONMENT.md`; if a fact is missing, trace it from the sources and update that shared record before using it. Present the plan and wait for the user's confirmation unless clear advance approval is already given. After implementation, report evidence and acceptance status; commit or push only after the user accepts the work package, unless they explicitly pre-authorize it. A real Vivado project is created through Tcl only in an approved work package. Programming, Flash/PHY writes, and active network traffic remain explicitly authorized operations for that plan.
+## Mode 1 和 Mode 2
 
-## Reference routing
+Mode 1 是轻量工程阅读；只将需要在对话后保留的结论写入 `AI-work/mode1/`。
 
-- `references/ai-work-bootstrap.md`: Mode 1 minimal AI-work skeleton.
-- `references/foundation-setup.md`: Mode 1 architecture-reading scope and completion.
-- `references/reading-workflow.md` and `references/data-path-deep-reading.md`: project and data-path reading.
-- `references/simulation-environment.md`: each S request.
-- `references/build-environment.md`: each B request.
-- `references/hardware-debug-environment.md`: each H request.
-- `references/read-only-diagnostics.md`: each D request.
-- `references/execution-discipline.md`: scope, reuse, and completion decisions for every Mode and flow.
-- `references/single-file-close-reading.md`, `references/feature-development.md`, and `references/new-board-development.md`: their respective modes only.
+Mode 2 的解释或比较是只读操作。用户明确要求添加注释时，只修改指定范围的注释，
+不改变端口、逻辑、约束、IP 或工程设置；记录范围和“仅注释变更”的检查结果。若
+发现需要功能改变，转入 Mode 3。
 
-Never claim a check passed without command output or board evidence. Do not overwrite or delete user work; stop and request direction if the authorized scope cannot be isolated.
+需要时阅读 [单文件阅读或注释](references/single-file-close-reading.md)。
+
+## 单一 Vivado 工程上下文
+
+AI 的所有 Vivado 操作必须使用用户已创建或指定的一份既有 `.xpr`。该工程的已注册
+fileset、IP、Block Design、run、仿真和 Hardware Manager 构成唯一上下文；不得创建、
+克隆或使用平行 Vivado 工程。
+
+RTL、XDC、testbench、IP、ILA、VIO、Block Design 及必要工程 Tcl 均属于该工程并
+放在其 GUI 工程结构中。所有 Vivado 原生产物均留在同一工程上下文：仿真数据位于
+`<工程>.sim/`，综合、实现、`.bit`、`.ltx` 和原生报告位于 `<工程>.runs/`，
+Hardware Manager 状态和 `.ila` 位于 `<工程>.hw/`，其他 GUI 生成目录（如
+`.cache/`、`.gen/`、`.ip_user_files/`、`.Xil/`）以及 Vivado 原生日志和 journal
+同样留在工程内。`AI-work` 只保存协作记录、分析结论、少量关键文本摘录和原生产物的
+绝对路径；不复制原生 WDB、WCFG、bitstream、LTX、ILA、日志或 journal 数据。
+
+## 操作流程
+
+| 流程 | 适用情况 | 工程原生产物 | AI 记录 |
+|---|---|---|---|
+| **S — 仿真** | 需要 DUT/场景的仿真证据。 | 已选 simulation fileset 和 `<工程>.sim/`。 | 工作包 `out/sim/<标识>/`，或独立请求的 `AI-work/sim/<标识>/`。 |
+| **B — 构建** | 需要综合、实现、时序或 bitstream。 | 既有工程的 `.runs/`。 | 工作包 `out/build/<标识>/`，或独立请求的 `AI-work/build/<标识>/`。 |
+| **H — 硬件 / ILA / VIO** | 需要下载、板级观察、ILA 或 VIO。 | `<工程>.hw/` 及其原生备份。 | 工作包 `out/ila/`、`out/hardware/`，或独立请求对应位置。 |
+| **D — 只读诊断** | 解释既有源文件、报告、日志或采集数据。 | 无。 | 工作包 `out/diagnostics/`，或 `AI-work/diagnostics/`。 |
+
+只选择当前需求需要的流程，不因流程名称自动补跑其他阶段。需要时分别阅读：
+
+- [S — 仿真](references/simulation-environment.md)
+- [B — 构建](references/build-environment.md)
+- [H — 硬件、ILA、VIO](references/hardware-debug-environment.md)
+- [D — 只读诊断](references/read-only-diagnostics.md)
+
+## 基本边界
+
+- 用户维护的 RTL、XDC、IP 配置、Block Design 和工程设置，只能按获批计划修改。
+  获批的重新综合、实现、仿真或硬件采集正常更新 `.runs/`、`.sim/`、`.hw/` 内的
+  原生产物，不视为覆盖用户维护内容。
+- RTL、XDC、IP、ILA、VIO、Block Design 或工程设置改动后，必须进行与交付目标相符
+  的重新构建；下载使用该工程构建的 `.bit`，ILA 或 VIO 则使用同一次实现生成的匹配
+  `.bit` / `.ltx`。
+- 启动 S、B、H 前，只检查 AI 本次实际需要写入或使用的具体仿真输出、run 或硬件
+  工作区是否已被占用。仅打开 Vivado GUI 不构成冲突；若目标资源确实被占用，停止
+  该操作并如实汇报，不抢占进程、不移动输出、不复制工程绕过。
+- 下载、ILA 捕获、VIO 写入、Flash 写入及其他板级状态改变操作，必须在计划中明确
+  并经用户确认。JTAG 下载默认是易失配置，除非明确要求非易失操作。
+- 不将未执行、失败、证据不足或仅部分完成的检查写成通过；仿真、构建和 ILA 结论
+  均只覆盖其实际验证范围。
+- 不为了流程而增加无关目录、脚本、模板、校验器或报告层。

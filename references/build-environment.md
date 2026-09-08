@@ -1,68 +1,24 @@
-# Project Build and Bitstream Flow (B)
+# B — 构建
 
-Use this flow to synthesize, implement, check timing, or generate a bitstream
-for an existing Vivado project. It is a standalone operational flow: a request
-to build an unchanged image does not require Mode 3. Mode 3 and Mode 4 may call
-this flow after a source, constraint, IP, or board-baseline change.
+B 用于在用户指定的既有 `.xpr` 中执行综合、实现、时序检查或 bitstream 生成。
 
-## 1. Authority and boundary
+## 计划
 
-Name the project, exact runs/stages, and decision question before launching:
+明确 `.xpr`、要使用的 run、请求阶段（综合、实现或 bitstream）和验收指标。若 RTL、
+XDC、IP、ILA、VIO、Block Design 或工程设置发生改动，计划必须包含与交付目标相符的
+重新构建。
 
-| Input | Requirement |
-|---|---|
-| Project and runs | Existing `.xpr` and the exact named runs, normally `synth_1` and `impl_1` |
-| Requested stage | `synth`, `impl`, or `bit`; do not infer bitstream generation from a request to inspect timing |
-| Authority | Explicit user approval before resetting, launching, or replacing an existing run or generated bit/LTX |
-| Acceptance | Declared timing/resource/DRC criteria, or an explicit statement that a criterion is not evaluated |
-| Output owner | A new standalone `AI-work/build/<build-id>/`, or the calling unit's `out/build/<build-id>/` |
+## 执行与记录
 
-`reset_run`, implementation, and `write_bitstream` can replace the project's
-current run products. If the named run/output is active or locked, report
-`BUILD_OUTPUT_LOCKED` and stop. Do not terminate another tool, move `.runs`,
-or create a clone solely to evade that condition.
+构建使用工程已有 run，正常更新 `<工程>.runs/` 下的原生产物。启动前只检查本次要写入
+的具体 run 是否被占用；打开 Vivado GUI 本身不构成冲突。目标 run 确实被占用时停止并
+汇报，不抢占进程或复制工程。
 
-This flow establishes build facts, not functional correctness or board
-behavior. A successful bitstream does not substitute for S or H evidence.
+下载使用该工程构建的 `.bit`；ILA 或 VIO 使用同一次实现生成的匹配 `.bit` / `.ltx`。
+AI 在 `out/build/` 记录所用 run、命令、适用的时序/DRC 结论、限制及原生产物绝对路径。
 
-## 2. Execute the declared stage
+构建成功只代表声明的构建目标和指标通过，不替代仿真或板级功能验证。
 
-Use the project's approved Vivado runner or a unit-local runner that names the
-same project and exact runs. Keep Vivado outer `-log` and `-journal` files in
-the declared AI result directory; native synthesis/implementation products,
-reports, checkpoints, `.bit`, and `.ltx` remain in their project-owned run
-locations. Do not build a copied project or hand-copy a BD/IP/wrapper.
-
-Run only the requested stage and its prerequisites:
-
-| Request | Allowed work |
-|---|---|
-| `synth` | `synth_1` only |
-| `impl` | Required synthesis, then `impl_1` without a bitstream |
-| `bit` | Required synthesis/implementation through `write_bitstream` |
-
-For implementation, collect WNS/TNS/WHS/THS when the project exposes them,
-resource utilization, and the relevant DRC status. For a bitstream, record the
-absolute bit/LTX paths and verify that the pair comes from the same declared
-`impl_1` result. Existing warnings are reported with their identity and count;
-they are not silently treated as a new regression.
-
-## 3. Results and evidence
-
-Write `BUILD_RESULT.txt` in the declared AI result directory. It records the
-project, runs/stage, command, run status, decisive error/critical-warning
-counts, timing/resource facts when applicable, bit/LTX identity when produced,
-and absolute native paths.
-
-| Result | Meaning |
-|---|---|
-| `BUILD_PASS` | The declared stage completed and every declared acceptance condition passed. Synthesis-only results state that timing is not evaluated. |
-| `BUILD_TIMING_FAIL` | Implementation completed but a declared timing criterion failed. |
-| `BUILD_SETUP_BLOCKED` | Project, run, requested stage, authority, or acceptance rule is missing. |
-| `BUILD_OUTPUT_LOCKED` | The exact requested run/output is occupied. |
-| `BUILD_TOOL_FAIL` | Vivado failed, or the requested run did not complete. |
-| `BUILD_ARTIFACT_MISMATCH` | A requested bit/LTX pair is absent or cannot be tied to the declared run. |
-
-Stop after the requested conclusion. Call H only if a board operation was
-requested, and call D when existing logs/reports need explanation without a
-rerun.
+用户明确要求的独立构建操作，在 `AI-work/build/<标识>/` 创建 `PLAN.md`、
+`EXECUTION.md` 和 `ACCEPTANCE.md`；若构建前需要修改设计输入或工程设置，则进入
+Mode 3。
