@@ -1,30 +1,37 @@
-# S — 仿真
+# S — Vivado 仿真
 
-S 用于获得明确 DUT 和场景的仿真证据。它始终使用用户指定 `.xpr` 的 simulation
-fileset 和工程上下文。
+S 用于在用户指定的 `.xpr` 中获得明确 DUT 和场景的仿真证据。仿真沿用工程已登记的
+simulation fileset、源文件、IP、compile order 和 simulation top，使命令行执行结果与
+GUI 中的工程状态一致。
 
-## 计划
+## 准备
 
-在工作包计划中写明：
+1. 打开用户指定的 `.xpr`，确认当前工程路径、器件和目标 simulation fileset。
+2. 明确 DUT、testbench、测试场景、检查方法和通过条件。
+3. 确认 RTL、仿真源、IP 和 testbench 已登记到正确 fileset；新增内容沿用工程的源文件
+   布局，更新 compile order 并保存工程。
+4. 选择 `$finish`、有限 runtime 或测试框架终止条件，使仿真能够明确结束。
+5. 检查本次使用的具体仿真会话或输出没有被其他进程占用。Vivado GUI 仅处于打开状态时，
+   继续使用这份工程；实际仿真会话正在使用同一输出时，等待或向用户说明冲突。
 
-- `.xpr`、simulation fileset、DUT、testbench 和场景；
-- 检查方法与通过标准；
-- `$finish`、仿真 runtime 或其他明确终止条件；
-- 是否需要新增 testbench、登记文件或调整 simulation top。
+## 执行
 
-testbench 位于该工程已选 simulation fileset 的 GUI 标准源目录，通常为
-`<工程>.srcs/<fileset>/new/`。新增源文件、登记至 fileset 或调整 top 会改变工程状态，
-必须属于已确认计划。
+通过该 `.xpr` 的 project-mode 仿真流程启动仿真，使用工程当前的 simulation top 和
+fileset 设置。将批处理 log/journal 明确放在工程目录或工程内的运行目录。
 
-## 执行与记录
+优先使用能够自动判定结果的 testbench。检查模拟器退出状态、断言、错误信息和预期终止
+标记；需要观察波形时，使用同一会话产生的 WDB/WCFG。
 
-通过既有 `.xpr` 启动仿真。WDB、WCFG、XSim 日志和其他原生产物留在 `<工程>.sim/`。
-在启动前只检查本次要使用的精确仿真输出是否被占用；单纯打开 Vivado GUI 不构成冲突。
-若目标输出确实被占用，停止并汇报。
+WDB、WCFG、XSim 输出和其他仿真原生产物保留在 `<工程>.sim/`。
 
-AI 在工作包 `out/sim/` 中记录 testbench、场景、命令、结论和原生产物绝对路径。仿真
-通过仅覆盖实际执行的场景，不能替代构建或板级验证。
+## 结果
 
-用户明确要求的独立仿真操作，在 `AI-work/sim/<标识>/` 创建 `PLAN.md`、
-`EXECUTION.md` 和 `ACCEPTANCE.md`，记录同样的信息；若需要修改设计输入或工程设置，
-则进入 Mode 3。
+向用户报告：
+
+- `.xpr`、simulation fileset、top、DUT 和 testbench；
+- 实际执行的场景及通过/失败结果；
+- 原生仿真目录、日志和波形的绝对路径；
+- 仿真实际覆盖的行为和仍未验证的内容。
+
+仿真结果只证明实际执行的 testbench 和场景。只有出现明确通过条件时才报告通过；失败时
+保留首个有效错误及其原生路径，供后续诊断。

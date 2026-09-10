@@ -1,4 +1,4 @@
 interface:
   display_name: "FPGA 协作开发"
-  short_description: "在既有 Vivado 工程中建立硬件环境并完成获批的 FPGA 工作包闭环。"
-  default_prompt: "使用 $fpga-cowork 为板卡建立硬件环境，或在我指定的既有 Vivado 工程中准备一个 FPGA 功能工作包。"
+  short_description: "在单一 Vivado GUI 工程中按模块架构协作开发、仿真、构建和上板调试。"
+  default_prompt: "使用 $fpga-cowork 在我指定的 Vivado 工程中规划并实现 FPGA 模块，并按需要完成仿真、构建或上板验证。"
