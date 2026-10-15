@@ -1,0 +1,12 @@
+{
+  "name": "fpga-cowork-diagram-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pinned local dependencies for RTL design figures",
+  "dependencies": {
+    "@viz-js/viz": "3.25.0",
+    "sharp": "0.35.5",
+    "wavedrom": "3.7.0",
+    "onml": "2.3.0"
+  }
+}
